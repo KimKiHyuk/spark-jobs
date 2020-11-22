@@ -1,4 +1,5 @@
 ﻿using System;
+using Microsoft.Spark.Sql;
 
 namespace emrApp
 {
@@ -8,9 +9,20 @@ namespace emrApp
         {
             SparkSession spark = SparkSession
                 .Builder()
-                .AppName("word_count_sample")
+                .AppName("emrApp")
                 .GetOrCreate();
 
+
+            DataFrame dataFrame = spark
+                .Read()
+                .Format("avro")
+                .Load("s3a://spark-data-vjal1251/topics/orders/partition=0");
+            
+            var rows = dataFrame.Select("address").Collect();
+
+            foreach (var row in rows) {
+                Console.WriteLine(row);
+            }
         }
     }
 }
