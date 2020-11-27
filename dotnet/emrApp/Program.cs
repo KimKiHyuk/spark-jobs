@@ -1,32 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
 using Microsoft.Spark.Sql;
-using Microsoft.Spark.Sql.Types;
 using static Microsoft.Spark.Sql.Functions;
+using emrApp.Model;
 
 namespace emrApp
 {
-    interface IDataFrame {
-        StructType GetSchema();
-    }
-
     class Program
     {
-        private class Region: IDataFrame
-        {
-            
-            int regionCode;
-            
-            public StructType GetSchema()
-            {
-                return new StructType(
-                    new List<StructField>() {
-                        new StructField("city", new StringType()),
-                        new StructField("count", new IntegerType()),
-                    }
-                );
-            }
-        }
         static void Main(string[] args)
         {
             SparkSession spark = SparkSession
@@ -34,22 +14,31 @@ namespace emrApp
                 .AppName("emrApp")
                 .GetOrCreate();
 
-
             DataFrame dataFrame = spark
                 .Read()
                 .Format("avro")
                 .Load(args[0]);
 
-            var s = dataFrame["itemid"];
-        
-            Func<Column, Column> udf = Udf<string, string[]>(
-                str => str.Split('_')
-            );  // city_23 --> 23 --> 2
+            RegionModel regionModel = new RegionModel();
+            
+            Func<Column, Column> udfConvertRegion = Udf<string, string>(
+                city => {                    
+                    var regionCode = city.Split('_')[1].Substring(0, 1);
+                    var convertedRegion = String.Empty; 
+                    regionModel.ConversionTable.TryGetValue(regionCode, out convertedRegion);
+                    return convertedRegion;
+                } // city_23 --> 23 --> 2 --> {2 : Brisbane} --> ** Brisbane **
+            );
 
-            dataFrame = dataFrame.WithColumn("Region", udf(dataFrame["itemid"]));
-            dataFrame.Show();
-
-            //spark.Stop();
+            dataFrame = dataFrame
+                .WithColumn("Region", udfConvertRegion(dataFrame["address.city"]))
+                .Drop("orderunits", "address");
+            
+            dataFrame
+                .Coalesce(1)
+                .Write()
+                .Format("csv")
+                .Save($"{args[1]}/{DateTime.UtcNow.ToString("yyyy/MM/dd/hh-mm-ss")}");  
         }
     }
 }
